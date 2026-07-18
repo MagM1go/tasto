@@ -16,6 +16,10 @@ class Authority:
 
         return f"{self.host}:{self.port}"
 
+# TODO: 
+#   - IPv6 support; 
+#   - Fully support for RFC 3986, Section 3: https://datatracker.ietf.org/doc/html/rfc3986#section-3
+#   - Include Path and Query to the URI
 class URI:
     def __init__(self, scheme: str | Schemes, authority: Authority | str, path: str | None = None, query: str | None = None) -> None:
         self.scheme = scheme.lower()

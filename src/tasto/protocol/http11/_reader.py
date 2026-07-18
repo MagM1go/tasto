@@ -1,0 +1,1 @@
+_UNSAFE_URL_BYTES_TO_REMOVE = ['\t', '\r', '\n']
