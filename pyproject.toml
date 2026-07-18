@@ -13,5 +13,6 @@ dependencies = []
 dev = [
     "mypy>=2.1.0",
     "nox>=2026.4.10",
+    "pip-audit>=2.10.1",
     "ruff>=0.15.20",
 ]
