@@ -10,14 +10,14 @@ class Authority:
     host: str
     port: int
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         if self.user_information:
             return f"{self.user_information}@{self.host}:{self.port}"
 
         return f"{self.host}:{self.port}"
 
-# TODO: 
-#   - IPv6 support; 
+# TODO:
+#   - IPv6 support;
 #   - Fully support for RFC 3986, Section 3: https://datatracker.ietf.org/doc/html/rfc3986#section-3
 #   - Include Path and Query to the URI
 class URI:
@@ -34,6 +34,9 @@ class URI:
 
         self.path = path
         self.query = query
+
+    def __str__(self) -> str:
+        return f"{self.scheme}://{self.authority}"
 
     def __repr__(self) -> str:
         return f"URI(scheme={self.scheme}, authority={self.authority})"
@@ -64,3 +67,16 @@ class URI:
             host=host,
             port=port
         )
+
+
+def parse_uri_from_string(uri: str | URI) -> URI:
+    if isinstance(uri, URI):
+        return uri
+
+    scheme_len = uri.find(":")
+
+    # 3 is "://"
+    return URI(
+        scheme=uri[:scheme_len],
+        authority=uri[scheme_len + 3:]
+    )

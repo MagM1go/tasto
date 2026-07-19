@@ -21,7 +21,7 @@ request_event = protocol.Request(
   method="GET", 
   uri=protocol.URI(
     scheme=protocol.Schemes.HTTPS,
-    authority="google.com:443"
+    authority="google.com"
   ),
   headers=[headers.Header("Host", "google.com"), headers.Header("Connection", "close")]
 )
