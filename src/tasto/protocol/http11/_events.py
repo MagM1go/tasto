@@ -3,16 +3,19 @@ from dataclasses import dataclass
 from tasto.protocol.api.events import Event
 from tasto.protocol.semantics import HTTPMethod
 from tasto.protocol.uri.uri import URI, parse_uri_from_string
+from tasto.headers import Header
 
 
 @dataclass(init=False, frozen=True, slots=True)
-class Request(Event):    
+class Request(Event):
     method: str | HTTPMethod
-    uri: str | URI
+    uri: URI
+    headers: Header | None
 
-    def __init__(self, method: str | HTTPMethod, uri: str | URI) -> None:
+    def __init__(self, method: str | HTTPMethod, uri: str | URI, headers: Header | None = None) -> None:
         object.__setattr__(self, "method", method)
         object.__setattr__(self, "uri", parse_uri_from_string(uri))
+        object.__setattr__(self, "headers", headers)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -23,5 +26,8 @@ class Data(Event):
 
 class Waiting(Event): ...
 
+class ConnectionClosed(Event): ...
 
 class EndOfMessage(Event): ...
+
+class Response(Event): ...
