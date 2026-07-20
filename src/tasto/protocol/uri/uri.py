@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 
 from tasto.protocol.uri.schemes import SCHEME_TO_PORT, Schemes
-from tasto.protocol._exceptions import MalformedAuthority, UnsupportedScheme
+from tasto.protocol._exceptions import MalformedAuthority, MalformedURI, UnsupportedScheme
+
+from tasto.protocol.uri._abnf import RFC3986_URI_REGEX
 
 # https://datatracker.ietf.org/doc/html/rfc3986#section-3
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -21,34 +23,43 @@ class Authority:
 #   - Fully support for RFC 3986, Section 3: https://datatracker.ietf.org/doc/html/rfc3986#section-3
 #   - Include Path and Query to the URI
 class URI:
-    def __init__(self, scheme: str | Schemes, authority: Authority | str, path: str | None = None, query: str | None = None) -> None:
+    _SLASH = "/"
+
+    def __init__(self, scheme: str | Schemes, authority: str | Authority, path: str = _SLASH, query: str | None = None) -> None:
         self.scheme = scheme.lower()
 
+        available = ", ".join(m.value for m in Schemes)
+        if not self.scheme or not self.scheme.strip():
+            raise MalformedURI(f"Choose scheme. Available: {available}")
+            
         if self.scheme not in Schemes:
-            raise UnsupportedScheme(f"Unknown scheme: {self.scheme.upper()}. Available: {', '.join(Schemes._member_names_)}")
+            raise UnsupportedScheme(f"Unknown scheme: {self.scheme.upper()}. Available: {available}")
 
-        self.authority = authority
-
-        if isinstance(self.authority, str):
-            self.authority = self._build_authority()
+        self.authority: Authority = self._build_authority(authority)
 
         self.path = path
         self.query = query
 
     def __str__(self) -> str:
-        return f"{self.scheme}://{self.authority}"
+        path_str = self.path if self.path != self._SLASH else ""
+
+        result = f"{self.scheme}://{self.authority}{path_str}"
+        if self.query:
+            result += f"?{self.query}"
+
+        return result
 
     def __repr__(self) -> str:
-        return f"URI(scheme={self.scheme}, authority={self.authority})"
+        return f"URI(scheme={self.scheme}, authority={self.authority}, path={self.path}, query={self.query})"
 
-    def _build_authority(self) -> Authority:
-        if isinstance(self.authority, Authority):
-            return self.authority
+    def _build_authority(self, authority: str | Authority) -> Authority:
+        if isinstance(authority, Authority):
+            return authority
 
-        if "@" in self.authority:
-            user_information, host_and_port = self.authority.split("@", 1)
+        if "@" in authority:
+            user_information, host_and_port = authority.split("@", 1)
         else:
-            user_information, host_and_port = None, self.authority
+            user_information, host_and_port = None, authority
 
         if ":" in host_and_port:
             host, port = host_and_port.split(":")
@@ -73,10 +84,19 @@ def parse_uri_from_string(uri: str | URI) -> URI:
     if isinstance(uri, URI):
         return uri
 
-    scheme_len = uri.find(":")
+    url = RFC3986_URI_REGEX.match(uri)
+    if not url:
+        raise MalformedURI(f"Wrong URI: {uri}")
 
-    # 3 is "://"
+    scheme, authority, path, query = (
+        url.group(2) or "",
+        url.group(4) or "",
+        url.group(5) or "",
+        url.group(7)
+    )
     return URI(
-        scheme=uri[:scheme_len],
-        authority=uri[scheme_len + 3:]
+        scheme=scheme,
+        authority=authority,
+        path=path,
+        query=query
     )
