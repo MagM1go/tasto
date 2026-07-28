@@ -1,33 +1,64 @@
 from dataclasses import dataclass
 
 from tasto.protocol.api.events import Event
-from tasto.protocol.semantics import HTTPMethod
-from tasto.protocol.uri.uri import URI, parse_uri_from_string
-from tasto.headers import Header
+from tasto.protocol.semantics import HTTPMethod, HTTPStatus
+from tasto.protocol.uri.uri import URI
 
 
-@dataclass(init=False, frozen=True, slots=True)
+@dataclass(frozen=True, slots=True)
 class Request(Event):
     method: str | HTTPMethod
     uri: URI
-    headers: Header | None
+    headers: list[tuple[str, str]]
 
-    def __init__(self, method: str | HTTPMethod, uri: str | URI, headers: Header | None = None) -> None:
-        object.__setattr__(self, "method", method)
-        object.__setattr__(self, "uri", parse_uri_from_string(uri))
-        object.__setattr__(self, "headers", headers)
+    http_version: str = "HTTP/1.1"
 
 
-@dataclass(frozen=True, slots=True, init=False)
-class Data(Event):
+@dataclass(frozen=True, slots=True)
+class Finish(Event):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class Status(Event):
+    version: bytes
+    number: bytes | HTTPStatus
+    message: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class Header(Event):
+    name: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class FinishHeaderSection(Event):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class HexChunkSize(Event):
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkBody(Event):
     data: bytes
-    is_last_chunk: bool
 
 
-class Waiting(Event): ...
+@dataclass(frozen=True, slots=True)
+class MessageBodyEnd(Event):
+    pass
 
-class ConnectionClosed(Event): ...
 
-class EndOfMessage(Event): ...
+@dataclass(frozen=True, slots=True)
+class MessageEnd(Event):
+    pass
 
-class Response(Event): ...
+
+@dataclass(frozen=True, slots=True)
+class Response(Event):
+    status: Status
+    headers: list[tuple[str, str]]
+    chunks: list[ChunkBody]
