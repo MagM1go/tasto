@@ -1,9 +1,13 @@
 from dataclasses import dataclass, field
 
-from tasto.protocol.uri.schemes import SCHEME_TO_PORT, Schemes
-from tasto.protocol._exceptions import MalformedAuthority, MalformedURI, UnsupportedScheme
-
+from tasto.protocol._exceptions import (
+    MalformedAuthority,
+    MalformedURI,
+    UnsupportedScheme,
+)
 from tasto.protocol.uri._abnf import RFC3986_URI_REGEX
+from tasto.protocol.uri.schemes import SCHEME_TO_PORT, Schemes
+
 
 # https://datatracker.ietf.org/doc/html/rfc3986#section-3
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -18,6 +22,7 @@ class Authority:
 
         return f"{self.host}:{self.port}"
 
+
 # TODO:
 #   - IPv6 support;
 #   - Fully support for RFC 3986, Section 3: https://datatracker.ietf.org/doc/html/rfc3986#section-3
@@ -25,20 +30,30 @@ class Authority:
 class URI:
     _SLASH = "/"
 
-    def __init__(self, scheme: str | Schemes, authority: str | Authority, path: str = _SLASH, query: str | None = None) -> None:
+    def __init__(
+        self,
+        scheme: str | Schemes,
+        authority: str | Authority,
+        path: str = _SLASH,
+        query: str | None = None,
+    ) -> None:
         self.scheme = scheme.lower()
 
         available = ", ".join(m.value for m in Schemes)
         if not self.scheme or not self.scheme.strip():
             raise MalformedURI(f"Choose scheme. Available: {available}")
-            
+
         if self.scheme not in Schemes:
-            raise UnsupportedScheme(f"Unknown scheme: {self.scheme.upper()}. Available: {available}")
+            raise UnsupportedScheme(
+                f"Unknown scheme: {self.scheme.upper()}. Available: {available}"
+            )
 
         self.authority: Authority = self._build_authority(authority)
 
         self.path = path
-        self.query = query
+        self.query = query or ""
+
+        self.path_and_query = f"{self.path}?{self.query}" if self.query else self.path
 
     def __str__(self) -> str:
         path_str = self.path if self.path != self._SLASH else ""
@@ -73,11 +88,7 @@ class URI:
         if not host:
             raise MalformedAuthority("Empty host")
 
-        return Authority(
-            user_information=user_information,
-            host=host,
-            port=port
-        )
+        return Authority(user_information=user_information, host=host, port=port)
 
 
 def parse_uri_from_string(uri: str | URI) -> URI:
@@ -91,12 +102,7 @@ def parse_uri_from_string(uri: str | URI) -> URI:
     scheme, authority, path, query = (
         url.group(2) or "",
         url.group(4) or "",
-        url.group(5) or "",
-        url.group(7)
+        url.group(5) or "/",
+        url.group(7),
     )
-    return URI(
-        scheme=scheme,
-        authority=authority,
-        path=path,
-        query=query
-    )
+    return URI(scheme=scheme, authority=authority, path=path, query=query)
