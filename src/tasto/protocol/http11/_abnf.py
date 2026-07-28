@@ -1,1 +1,1 @@
-CRLF = b"\r\n"
+CRLF = "\r\n"
