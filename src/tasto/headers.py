@@ -8,8 +8,8 @@ from tasto.protocol.http11._abnf import CRLF
 
 
 class Header:
-    def __init__(self, value: str, header_name: str | None = None) -> None:
-        self._key = header_name or self.__class__.__name__
+    def __init__(self, *, name: str | None = None, value: str) -> None:
+        self._key = name or self.__class__.__name__
         self._value = value
 
         self._pairs: list[tuple[str, str]] = [(self._key, self._value)]
@@ -27,16 +27,16 @@ class Header:
         return self._from_pairs(self._pairs + other._pairs)
 
     def get_from_pair(self, name: str) -> Iterator[str]:
-        return (value for key, value in self._pairs if key.lower() == name.lower())
+        return (value.strip() for key, value in self._pairs if key.lower() == name.lower())
 
     def first(self, name: str) -> str | None:
-        return next(self.get_from_pair(name), None)
+        try:
+            return next(self.get_from_pair(name), None)
+        except StopIteration:
+            return
 
-    def _to_bytes(self) -> bytes:
-        return (
-            CRLF.join([f"{pair[0]}: {pair[1]}".encode() for pair in self._pairs])
-            + 2 * CRLF
-        )
+    def as_bytes(self) -> bytes:
+        return CRLF.join([f"{key}: {value}".strip() for key, value in self._pairs]).encode()
 
 
 class Host(Header): ...
@@ -44,9 +44,9 @@ class Host(Header): ...
 
 class UserAgent(Header):
     def __init__(self, value: str) -> None:
-        super().__init__(value, "User-Agent")
+        super().__init__(name="User-Agent", value=value)
 
 
 class SetCookie(Header):
-    def __init__(self, value: str, header_name: str | None = None) -> None:
-        super().__init__(value, "Set-Cookie")
+    def __init__(self, value: str) -> None:
+        super().__init__(name="Set-Cookie", value=value)
