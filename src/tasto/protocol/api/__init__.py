@@ -1,3 +1,3 @@
-from .receive import ReceiveBufferContract
+from .buffer import ReceiveBufferContract
 
 __all__ = ("ReceiveBufferContract",)
