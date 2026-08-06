@@ -1,55 +1,28 @@
 from dataclasses import dataclass
 
 from tasto.protocol.api.events import Event
-from tasto.protocol.semantics import HTTPMethod, HTTPStatus
-from tasto.protocol.uri.uri import URI
+from tasto.protocol.semantics import HTTPMethod
 
 
 @dataclass(frozen=True, slots=True)
-class Request(Event):
-    method: str | HTTPMethod
-    uri: URI
+class _BaseInformation(Event):
     headers: list[tuple[str, str]]
-
-    http_version: str = "HTTP/1.1"
-
-
-@dataclass(frozen=True, slots=True)
-class Finish(Event):
-    pass
+    http_version: str
 
 
 @dataclass(frozen=True, slots=True)
-class Status(Event):
-    version: bytes
-    number: bytes | HTTPStatus
-    message: bytes
+class Request(_BaseInformation):
+    method: str | HTTPMethod
+    target: str
 
 
 @dataclass(frozen=True, slots=True)
-class Header(Event):
-    name: str
-    value: str
+class Waiting: ...
 
 
 @dataclass(frozen=True, slots=True)
-class FinishHeaderSection(Event):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class HexChunkSize(Event):
-    value: str
-
-
-@dataclass(frozen=True, slots=True)
-class ChunkBody(Event):
+class Data(Event):
     data: bytes
-
-
-@dataclass(frozen=True, slots=True)
-class MessageBodyEnd(Event):
-    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +31,16 @@ class MessageEnd(Event):
 
 
 @dataclass(frozen=True, slots=True)
-class Response(Event):
-    status: Status
-    headers: list[tuple[str, str]]
-    chunks: list[ChunkBody]
+class ConnectionClosed:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class InformationResponse(_BaseInformation):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class Response(_BaseInformation):
+    http_status: str
+    message: str
