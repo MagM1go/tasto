@@ -11,8 +11,27 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.13",
     "mypy>=2.1.0",
     "nox>=2026.4.10",
     "pip-audit>=2.10.1",
     "ruff>=0.15.20",
 ]
+
+[tool.importlinter]
+root_package = "tasto"
+
+    [[tool.importlinter.contracts]]
+    name = "sans-IO -> transport -> client"
+    type = "layers"
+    layers = [
+        "tasto.client",
+        "tasto.transport",
+        "tasto.protocol",
+    ]
+
+[tool.mypy]
+strict = true
+
+[tool.basedpyright]
+ignore = ["noxfile.py", "tests/**"]
