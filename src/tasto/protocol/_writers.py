@@ -1,105 +1,121 @@
-from tasto.protocol.api.receive import ReceiveBufferContract
+from typing import override
+
+from tasto.protocol.api.buffer import ReceiveBufferContract
 from tasto.protocol.api.writers import WriterStrategy
 from tasto.protocol.http11._abnf import CRLF
-from tasto.protocol.http11._events import ChunkBody, Request, Response, Status
+from tasto.protocol.http11._events import Data, Request, Response
 
 
 class _ContentLengthWriter(WriterStrategy):
     def __init__(self, buffer: ReceiveBufferContract) -> None:
-        self.buffer = buffer
+        self.buffer: ReceiveBufferContract = buffer
 
-    def __call__(self, chunk_size: int, chunk: ChunkBody) -> None:
-        # self.declared_size = chunk_size
-
+    def __call__(self, chunk_size: int, chunk: Data) -> None:
         self.buffer.put_data(chunk.data[:chunk_size])
 
-    def eom(self) -> None:
+    @override
+    def write_eom(self) -> None:
         pass
 
 
 class _TransferEncodingChunkedWriter(WriterStrategy):
     def __init__(self, buffer: ReceiveBufferContract) -> None:
-        self.buffer = buffer
+        self.buffer: ReceiveBufferContract = buffer
 
-    def __call__(self, chunk_size: int, chunk: ChunkBody) -> None:
+    def __call__(self, chunk_size: int, chunk: Data) -> None:
         chunk_body = chunk.data[:chunk_size]
 
         if not chunk_body:
             return
 
         self.buffer.put_data(f"{chunk_size:x}\r\n".encode())
-
-        if chunk_size > 0:
-            self.buffer.put_data(chunk_body)
-
+        self.buffer.put_data(chunk_body)
         self.buffer.put_data(b"\r\n")
 
-    def eom(self) -> None:
+    @override
+    def write_eom(self) -> None:
         self.buffer.put_data(b"0\r\n\r\n")
 
 
 # TODO: https://www.rfc-editor.org/info/rfc9112/#section-11.1
 class HTTPMessageWriterStrategy(WriterStrategy):
     def __init__(self, buffer: ReceiveBufferContract) -> None:
-        self.buffer = buffer
+        self.buffer: ReceiveBufferContract = buffer
 
-        self._internal_writer = None
+        self._internal_writer: _TransferEncodingChunkedWriter | _ContentLengthWriter = (
+            _ContentLengthWriter(self.buffer)
+        )
 
     def _get_headers(self, headers: list[tuple[str, str]]) -> bytes:
-        result = ""
-        for header in headers:
-            key, value = header
+        grouped_headers: dict[str, list[str]] = {}
+        set_cookies: list[str] = []
 
-            result += f"{key.lower()}: {value}{CRLF}"
+        for key, value in headers:
+            key_lower = key.lower()
 
-        result += CRLF
+            if key_lower == "set-cookie":
+                set_cookies.append(value)
+            else:
+                grouped_headers.setdefault(key_lower, []).append(value)
+
+        lines: list[str] = []
+        for key, values in grouped_headers.items():
+            lines.append(f"{key}: {', '.join(values)}")
+
+        for value in set_cookies:
+            lines.append(f"set-cookie: {value}")
+
+        result = "".join(f"{line}{CRLF}" for line in lines) + CRLF
         return result.encode()
 
-    def write_status_line(self, status: Status) -> None:
+    def write_status_line(self, http_version: str, status: str, message: str) -> None:
         self.buffer.put_data(
             b"%b %b %b\r\n"
             % (
-                status.version,
-                status.number,
-                status.message,
+                http_version.encode(),
+                status.encode(),
+                message.encode(),
             )
         )
 
     def write_request_line(self, request: Request) -> None:
         self.buffer.put_data(
             b"%b %b %b\r\n"
-            % (request.method, request.uri.path_and_query, request.http_version)
+            % (
+                request.method.encode(),
+                request.target.encode(),
+                request.http_version.encode(),
+            )
         )
 
     def write_headers(self, headers: list[tuple[str, str]]) -> None:
         self.buffer.put_data(self._get_headers(headers))
 
-    def write_request(self, request: Request) -> None:
-        self.write_request_line(request)
-        self.write_headers(request.headers)
-
-    def write_chunk(
-        self,
-        writer: _ContentLengthWriter | _TransferEncodingChunkedWriter,
-        chunk_size: int,
-        chunk: ChunkBody,
-    ) -> None:
-        writer(chunk_size, chunk)
-
-    def write_response(self, response: Response) -> None:
-        if any(h[0].lower() == "transfer-encoding" for h in response.headers):
+    def predict_writer_strategy(self, headers: list[tuple[str, str]]) -> None:
+        if any(h[0].lower() == "transfer-encoding" for h in headers):
             self._internal_writer = _TransferEncodingChunkedWriter(self.buffer)
         else:
             self._internal_writer = _ContentLengthWriter(self.buffer)
 
-        self.write_status_line(response.status)
+    def write_request(self, request: Request) -> None:
+        self.write_request_line(request)
+        self.write_headers(request.headers)
+
+    # если придут слишком большие хедеры а окно получения будет меньше, то будет бабах. Та же история с status_line
+    def write_response(self, response: Response) -> None:
+        self.predict_writer_strategy(response.headers)
+        self.write_status_line(
+            response.http_version, response.http_status, response.message
+        )
         self.write_headers(response.headers)
 
-        for chunk in response.chunks:
-            self.write_chunk(self._internal_writer, len(chunk.data), chunk)
+    def write_chunk(
+        self,
+        chunk_size: int,
+        chunk: Data,
+    ) -> None:
+        self._internal_writer(chunk_size, chunk)
 
-        self.eom()
-
-    def eom(self) -> None:
-        if self._internal_writer is not None:
-            self._internal_writer.eom()
+    @override
+    def write_eom(self) -> None:
+        self._internal_writer.write_eom()
