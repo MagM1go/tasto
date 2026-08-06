@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Final, override
 
 from tasto.protocol._exceptions import (
     MalformedAuthority,
@@ -16,6 +17,7 @@ class Authority:
     host: str
     port: int
 
+    @override
     def __str__(self) -> str:
         if self.user_information:
             return f"{self.user_information}@{self.host}:{self.port}"
@@ -28,7 +30,7 @@ class Authority:
 #   - Fully support for RFC 3986, Section 3: https://datatracker.ietf.org/doc/html/rfc3986#section-3
 #   - Include Path and Query to the URI
 class URI:
-    _SLASH = "/"
+    _SLASH: Final[str] = "/"
 
     def __init__(
         self,
@@ -37,7 +39,7 @@ class URI:
         path: str = _SLASH,
         query: str | None = None,
     ) -> None:
-        self.scheme = scheme.lower()
+        self.scheme: str = scheme.lower()
 
         available = ", ".join(m.value for m in Schemes)
         if not self.scheme or not self.scheme.strip():
@@ -50,11 +52,12 @@ class URI:
 
         self.authority: Authority = self._build_authority(authority)
 
-        self.path = path
-        self.query = query or ""
+        self.path: str = path
+        self.query: str = query or ""
 
-        self.path_and_query = f"{self.path}?{self.query}" if self.query else self.path
+        self.path_and_query: str = f"{self.path}?{self.query}" if self.query else self.path
 
+    @override
     def __str__(self) -> str:
         path_str = self.path if self.path != self._SLASH else ""
 
@@ -64,6 +67,7 @@ class URI:
 
         return result
 
+    @override
     def __repr__(self) -> str:
         return f"URI(scheme={self.scheme}, authority={self.authority}, path={self.path}, query={self.query})"
 
@@ -77,18 +81,18 @@ class URI:
             user_information, host_and_port = None, authority
 
         if ":" in host_and_port:
-            host, port = host_and_port.split(":")
+            host, port = host_and_port.split(":", 1)
             try:
-                port = int(port)
+                port = int(port)  # type: ignore[assignment]
             except ValueError:
                 raise MalformedAuthority(f"Invalid port: {port}")
         else:
-            host, port = host_and_port, SCHEME_TO_PORT[self.scheme]
+            host, port = host_and_port, SCHEME_TO_PORT[self.scheme]  # type: ignore[assignment]
 
         if not host:
             raise MalformedAuthority("Empty host")
 
-        return Authority(user_information=user_information, host=host, port=port)
+        return Authority(user_information=user_information, host=host, port=port)  # type: ignore[arg-type]
 
 
 def parse_uri_from_string(uri: str | URI) -> URI:

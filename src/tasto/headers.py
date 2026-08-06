@@ -9,8 +9,8 @@ from tasto.protocol.http11._abnf import CRLF
 
 class Header:
     def __init__(self, *, name: str | None = None, value: str) -> None:
-        self._key = name or self.__class__.__name__
-        self._value = value
+        self._key: str = name or self.__class__.__name__
+        self._value: str = value
 
         self._pairs: list[tuple[str, str]] = [(self._key, self._value)]
 
@@ -33,7 +33,7 @@ class Header:
         try:
             return next(self.get_from_pair(name), None)
         except StopIteration:
-            return
+            return None
 
     def as_bytes(self) -> bytes:
         return CRLF.join([f"{key}: {value}".strip() for key, value in self._pairs]).encode()
