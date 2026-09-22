@@ -5,8 +5,14 @@ from tasto.protocol.semantics import HTTPMethod
 
 
 @dataclass(frozen=True, slots=True)
+class Header(Event):
+    key: bytes
+    value: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class _BaseInformation(Event):
-    headers: list[tuple[str, str]]
+    headers: list[list[tuple[str, str]]]
     http_version: str
 
 
@@ -44,3 +50,12 @@ class InformationResponse(_BaseInformation):
 class Response(_BaseInformation):
     http_status: str
     message: str
+
+
+@dataclass(frozen=True, slots=True)
+class _NeedMore:
+    pass
+
+
+NEED_DATA = _NeedMore()
+WAITING = Waiting()

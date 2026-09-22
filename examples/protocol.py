@@ -48,3 +48,41 @@ while True:
     break
 
 sock.close()    
+
+
+
+comm = Communication(CLIENT)
+
+sock.sendall(comm.create_message(Request("GET", "https://google.com", headers=[("Host", "www.google.com")])))
+comm.signal_my_message_end()
+
+while True:
+  comm.receive(sock.recv(4096))
+  
+  while True:
+    event = comm.next_event()
+
+    if isinstance(event, MessageEnd):
+      break
+
+    # либо ожидаем полную сборку ответа
+    if isinstance(event, Response):
+      print(event.status)
+      print(event.chunks[0].data)
+      print(event.headers[0].name, event.headers[0].value)
+      break
+
+    # либо получаем каждый ивент по очереди
+    if isinstance(event, Status):
+      print(event.number, event.message)
+      continue
+
+    elif isinstance(event, Header):
+      print(event.name, event.value)
+      continue
+
+    else:
+      # значит вернулось None, а значит ивентов не будэ
+      break
+  
+  break

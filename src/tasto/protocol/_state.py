@@ -10,11 +10,7 @@ from tasto.protocol.http11._events import (
     Request,
     Response,
 )
-
-
-class Role(StrEnum):
-    CLIENT = "client"
-    SERVER = "server"
+from tasto.protocol.role import Role
 
 
 class State(StrEnum):
@@ -27,7 +23,7 @@ class State(StrEnum):
     DONE = "done"
 
 
-SENDER_STATES = {
+CLIENT_STATES = {
     State.IDLE: {Request: State.SEND_BODY, ConnectionClosed: State.CLOSE_CONNECTION},
     State.SEND_BODY: {Data: State.SEND_BODY, MessageEnd: State.DONE},
     State.DONE: {ConnectionClosed: State.CLOSE_CONNECTION},
@@ -35,7 +31,7 @@ SENDER_STATES = {
     State.CLOSE_CONNECTION: {ConnectionClosed: State.CLOSE_CONNECTION},
 }
 
-RECEIVER_STATES = {
+SERVER_STATES = {
     State.IDLE: {ConnectionClosed: State.CLOSE_CONNECTION, Response: State.SEND_BODY},
     State.SEND_RESPONSE: {
         InformationResponse: State.SEND_RESPONSE,
@@ -47,7 +43,7 @@ RECEIVER_STATES = {
     State.CLOSE_CONNECTION: {ConnectionClosed: State.CLOSE_CONNECTION},
 }
 
-STATES = {Role.CLIENT: SENDER_STATES, Role.SERVER: RECEIVER_STATES}
+STATES = {Role.CLIENT: CLIENT_STATES, Role.SERVER: SERVER_STATES}
 
 
 @final
@@ -79,3 +75,4 @@ class CommunicationState:
 
         current_state_for_role = STATES[self._role][self._current_states[self._role]]
         self._current_states[self._role] = current_state_for_role[event]  # type: ignore[index] # pyright: ignore[reportArgumentType]
+    

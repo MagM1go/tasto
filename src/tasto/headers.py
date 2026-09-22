@@ -4,8 +4,6 @@
 
 from collections.abc import Iterator
 
-from tasto.protocol.http11._abnf import CRLF
-
 
 class Header:
     def __init__(self, *, name: str | None = None, value: str) -> None:
@@ -36,7 +34,7 @@ class Header:
             return None
 
     def as_bytes(self) -> bytes:
-        return CRLF.join([f"{key}: {value}".strip() for key, value in self._pairs]).encode()
+        return "\r\n".join([f"{key}: {value}".strip() for key, value in self._pairs]).encode()
 
 
 class Host(Header): ...
