@@ -9,7 +9,6 @@ class Buffer(ReceiveBufferContract):
         self._bytebuffer = bytearray()
 
         self._crlf_search_index = 0
-        self._crlf_search_for_multiple_index = 0
 
     def _consume(self, count: int) -> bytearray:
         data = self._bytebuffer[:count]
@@ -32,13 +31,14 @@ class Buffer(ReceiveBufferContract):
 
     @override
     def read_until_crlf(self) -> bytearray | None:
-        start_index = max(0, self._crlf_search_index)
-        first_crlf_index = self._bytebuffer.find(b"\r\n", start_index - 1)
+        search_start = max(0, self._crlf_search_index - 1)
+        first_crlf_index = self._bytebuffer.find(b"\r\n", search_start)
 
         if first_crlf_index == -1:
             self._crlf_search_index = len(self._bytebuffer)
             return None
 
+        self._crlf_search_index = 0
         return self._consume(first_crlf_index + 2)
 
     @override

@@ -4,6 +4,7 @@ from typing import final
 from tasto.protocol._state import CommunicationState
 from tasto.protocol.api.buffer import ReceiveBufferContract
 from tasto.protocol.api.events import Event
+from tasto.protocol.api.state import State
 from tasto.protocol.http11._buffer import Buffer
 from tasto.protocol.http11._events import (
     Data,
@@ -18,8 +19,9 @@ from tasto.protocol.role import Role
 @final
 class Communication:
     def __init__(self, role: Role) -> None:
+        self._state: State
+        
         self._role = role
-        self._state = CommunicationState(self._role)
         self._events: deque[Event] = deque()
 
         self._receive_buffer: ReceiveBufferContract = Buffer()
@@ -31,6 +33,6 @@ class Communication:
         return self._events.popleft()
 
     def send(self, event: Event) -> bytes:
-        self._state.transition(event)
+        self._state
 
         

@@ -1,78 +1,111 @@
-from enum import StrEnum
-from typing import final
+from typing import final, override
 
+from tasto.protocol._exceptions import IllegalStatusLine, MalformedHeader
+from tasto.protocol.api.buffer import ReceiveBufferContract
 from tasto.protocol.api.events import Event
-from tasto.protocol.http11._events import (
-    ConnectionClosed,
-    Data,
-    InformationResponse,
-    MessageEnd,
-    Request,
-    Response,
-)
-from tasto.protocol.role import Role
-
-
-class State(StrEnum):
-    IDLE = "idle"
-    SEND_BODY = "send_body"
-    SEND_RESPONSE = "send_response"
-    RESPONSE_RECEIVED = "response_received"
-    MUST_CLOSE = "must_close"
-    CLOSE_CONNECTION = "close_connection"
-    DONE = "done"
-
-
-CLIENT_STATES = {
-    State.IDLE: {Request: State.SEND_BODY, ConnectionClosed: State.CLOSE_CONNECTION},
-    State.SEND_BODY: {Data: State.SEND_BODY, MessageEnd: State.DONE},
-    State.DONE: {ConnectionClosed: State.CLOSE_CONNECTION},
-    State.MUST_CLOSE: {ConnectionClosed: State.CLOSE_CONNECTION},
-    State.CLOSE_CONNECTION: {ConnectionClosed: State.CLOSE_CONNECTION},
-}
-
-SERVER_STATES = {
-    State.IDLE: {ConnectionClosed: State.CLOSE_CONNECTION, Response: State.SEND_BODY},
-    State.SEND_RESPONSE: {
-        InformationResponse: State.SEND_RESPONSE,
-        Response: State.SEND_BODY,
-    },
-    State.SEND_BODY: {Data: State.SEND_BODY, MessageEnd: State.DONE},
-    State.DONE: {ConnectionClosed: State.CLOSE_CONNECTION},
-    State.MUST_CLOSE: {ConnectionClosed: State.CLOSE_CONNECTION},
-    State.CLOSE_CONNECTION: {ConnectionClosed: State.CLOSE_CONNECTION},
-}
-
-STATES = {Role.CLIENT: CLIENT_STATES, Role.SERVER: SERVER_STATES}
+from tasto.protocol.api.state import State
+from tasto.protocol.http11._abnf import status_line_re
+from tasto.protocol.http11._events import WAITING, Data, MessageEnd, Response
 
 
 @final
-class CommunicationState:
-    def __init__(self, role: Role) -> None:
-        self._keep_alive = True
-        self._current_states: dict[Role, State] = {
-            Role.CLIENT: State.IDLE,
-            Role.SERVER: State.IDLE,
-        }
+class ServerStatusLineState(State):
+    @override
+    def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
+        status_line = buffer.read_until_crlf()
+        if not status_line:
+            return WAITING, self
 
-        self._role = role
+        match = status_line_re.match(status_line)
+        if not match:
+            raise IllegalStatusLine(bytes(status_line))
 
-    @property
-    def keep_alive(self) -> bool:
-        return self._keep_alive
+        message = match[3].decode("latin-1") if match[3] is not None else ""
+        return ServerHeaderState(
+            http_version=match[1].decode("ascii"),
+            http_status=match[2].decode("ascii"),
+            message=message,
+        ).feed(buffer)
 
-    @property
-    def current(self) -> State:
-        return self._current_states[self._role]
 
-    def transition(self, event: Event) -> None:
-        event = type(event)
+@final
+class ServerHeaderState(State):
+    def __init__(self, http_version: str, http_status: str, message: str) -> None:
+        self._http_version = http_version
+        self._http_status = http_status
+        self._message = message
+        self._headers: list[tuple[str, str]] = []
 
-        if not self._keep_alive:
-            for role in Role:
-                if self._current_states[role] == State.DONE:
-                    self._current_states[role] = State.MUST_CLOSE
+    @override
+    def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
+        while (line := buffer.read_until_crlf()) is not None:
+            if bytes(line) == b"\r\n":
+                # TODO: выборка по заголовку content-length-state / chunked-body-state
+                return (
+                    Response(
+                        headers=self._headers,
+                        http_version=self._http_version,
+                        http_status=self._http_status,
+                        message=self._message,
+                    ),
+                    ChunkedBodyState(),
+                )
 
-        current_state_for_role = STATES[self._role][self._current_states[self._role]]
-        self._current_states[self._role] = current_state_for_role[event]  # type: ignore[index] # pyright: ignore[reportArgumentType]
-    
+            key, separator, value = line[:-2].partition(b":")
+            if not separator:
+                raise MalformedHeader(bytes(line))
+
+            self._headers.append(
+                (key.strip().decode("ascii"), value.strip().decode("latin-1"))
+            )
+
+        return WAITING, self
+
+
+@final
+class ChunkedBodyState(State):
+    def __init__(self) -> None:
+        self._remaining_bytes_in_chunk = 0
+        self._is_expecting_crlf = False
+
+    @override
+    def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
+        if self._is_expecting_crlf:
+            crlf = buffer.read_until_crlf()
+            if not crlf:
+                return WAITING, self
+
+            self._is_expecting_crlf = False
+
+        if self._remaining_bytes_in_chunk == 0:
+            chunk_length = buffer.read_until_crlf()
+            if not chunk_length:
+                return WAITING, self
+
+            hex_size = chunk_length.split(b";")[0].strip()
+            try:
+                self._remaining_bytes_in_chunk = int(hex_size, base=16)
+            except ValueError:
+                raise MalformedHeader(bytes(chunk_length))
+
+            if self._remaining_bytes_in_chunk == 0:
+                return MessageEnd(), DoneState()
+
+        chunk_data = buffer.read_at_most(self._remaining_bytes_in_chunk)
+        if not chunk_data:
+            return WAITING, self
+
+        print(self._remaining_bytes_in_chunk)
+        self._remaining_bytes_in_chunk -= len(chunk_data)
+
+        if self._remaining_bytes_in_chunk == 0:
+            self._is_expecting_crlf = True
+
+        return Data(data=bytes(chunk_data)), self
+
+
+@final
+class DoneState(State):
+    @override
+    def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
+        return MessageEnd(), self

@@ -12,7 +12,7 @@ class Header(Event):
 
 @dataclass(frozen=True, slots=True)
 class _BaseInformation(Event):
-    headers: list[list[tuple[str, str]]]
+    headers: list[tuple[str, str]]
     http_version: str
 
 
