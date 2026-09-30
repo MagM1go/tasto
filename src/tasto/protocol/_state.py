@@ -36,11 +36,35 @@ class ServerHeaderState(State):
         self._message = message
         self._headers: list[tuple[str, str]] = []
 
+    # No
+    # Shut up
+    # You didn't see that
+    def _content_body_type(self) -> str:
+        result = "content-length"
+
+        for key, value in self._headers:
+            if key.lower() == "transfer-encoding" and value == "chunked":
+                result = "transfer-encoding"
+
+        return result
+
+    # And this.
+    def _content_length(self) -> int:
+        return int(
+            next(
+                value for key, value in self._headers if key.lower() == "content-length"
+            )
+        )
+
     @override
     def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
         while (line := buffer.read_until_crlf()) is not None:
             if bytes(line) == b"\r\n":
-                # TODO: выборка по заголовку content-length-state / chunked-body-state
+                body_state = (
+                    ChunkedBodyState()
+                    if self._content_body_type() == "transfer-encoding"
+                    else ContentLengthBodyState(self._content_length())
+                )
                 return (
                     Response(
                         headers=self._headers,
@@ -48,7 +72,7 @@ class ServerHeaderState(State):
                         http_status=self._http_status,
                         message=self._message,
                     ),
-                    ChunkedBodyState(),
+                    body_state,
                 )
 
             key, separator, value = line[:-2].partition(b":")
@@ -60,6 +84,24 @@ class ServerHeaderState(State):
             )
 
         return WAITING, self
+
+
+@final
+class ContentLengthBodyState(State):
+    def __init__(self, length: int) -> None:
+        self._remaining_bytes = length
+
+    @override
+    def feed(self, buffer: ReceiveBufferContract) -> tuple[Event, State]:
+        if self._remaining_bytes == 0:
+            return MessageEnd(), DoneState()
+
+        body = buffer.read_at_most(self._remaining_bytes)
+        if not body:
+            return WAITING, self
+
+        self._remaining_bytes -= len(body)
+        return Data(data=bytes(body)), self
 
 
 @final
@@ -95,9 +137,7 @@ class ChunkedBodyState(State):
         if not chunk_data:
             return WAITING, self
 
-        print(self._remaining_bytes_in_chunk)
         self._remaining_bytes_in_chunk -= len(chunk_data)
-
         if self._remaining_bytes_in_chunk == 0:
             self._is_expecting_crlf = True
 
